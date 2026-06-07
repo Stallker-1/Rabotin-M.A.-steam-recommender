@@ -23,3 +23,17 @@ class RecommenderAPIClient:
         except Exception as e:
             logger.error(f"Error: {e}")
             return None
+        
+    def get_recommendations_by_genres(self, genres: List[str], n: int = 10) -> Optional[List[Dict]]:
+        """Получение рекомендаций по жанрам"""
+        try:
+            response = requests.post(
+                f"{self.api_url}/recommend-by-genres",
+                json={"genres": genres, "n_recommendations": n},
+                timeout=10
+            )
+            response.raise_for_status()
+            return response.json().get("recommendations", [])
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return None

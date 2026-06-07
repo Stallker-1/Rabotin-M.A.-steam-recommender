@@ -13,6 +13,38 @@ class LoginForm(FlaskForm):
     submit = SubmitField("Войти")
 
 class RecommendForm(FlaskForm):
-    user_id = StringField("ID пользователя (если есть)", validators=[Length(max=50)])
-    genres = SelectMultipleField("Предпочитаемые жанры", choices=[], coerce=str)
-    submit = SubmitField("Получить рекомендации")
+    # Убираем поле user_id, оставляем только жанры
+    genres = SelectMultipleField(
+        "Предпочитаемые жанры",
+        choices=[
+            ('Action', '🎮 Action'),
+            ('RPG', '⚔️ RPG'),
+            ('Strategy', '🎯 Strategy'),
+            ('Adventure', '🗺️ Adventure'),
+            ('Indie', '🎨 Indie'),
+            ('Simulation', '🏭 Simulation'),
+            ('Sports', '⚽ Sports'),
+            ('Puzzle', '🧩 Puzzle'),
+            ('Horror', '👻 Horror'),
+            ('Fighting', '🥊 Fighting'),
+            ('Shooter', '🔫 Shooter'),
+            ('Racing', '🏎️ Racing'),
+            ('Casual', '😊 Casual'),
+            ('MMO', '🌍 MMO')
+        ],
+        coerce=str,
+        default=[]
+    )
+    submit = SubmitField("🎮 Получить рекомендации")
+
+class TextSearchForm(FlaskForm):
+    query = StringField("Поиск игр", validators=[DataRequired(), Length(min=2, max=200)])
+    genres_filter = SelectMultipleField("Фильтр по жанрам (опционально)", 
+                                         choices=[('Strategy', 'Стратегии'), 
+                                                  ('Zombie', 'Зомби'),
+                                                  ('RPG', 'RPG'),
+                                                  ('Action', 'Экшен'),
+                                                  ('Survival', 'Выживание'),
+                                                  ('Horror', 'Ужасы')],
+                                         coerce=str)
+    submit = SubmitField("🔍 Найти игры")

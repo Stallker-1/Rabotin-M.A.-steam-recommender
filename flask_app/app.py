@@ -1,5 +1,6 @@
 import logging
 import json
+import requests
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from config import Config
 from models import User, RecommendationHistory, db
@@ -82,17 +83,24 @@ def recommend():
     recommendations = None
     
     if form.validate_on_submit():
-        user_id = session["user_id"]
-        recs = recommender_client.get_recommendations(user_id, 10)
+        selected_genres = form.genres.data
+        
+        if selected_genres:
+            # Рекомендации по выбранным жанрам
+            recs = recommender_client.get_recommendations_by_genres(selected_genres, 10)
+        else:
+            # Персональные рекомендации (по умолчанию)
+            recs = recommender_client.get_recommendations(session["user_id"], 10)
+        
         if recs:
             recommendations = recs
             history = RecommendationHistory(
-                user_id=user_id,
+                user_id=session["user_id"],
                 game_ids=json.dumps([r["game_id"] for r in recs])
             )
             db.session.add(history)
             db.session.commit()
-            flash("Рекомендации получены!", "success")
+            flash(f"Найдено {len(recs)} рекомендаций!", "success")
         else:
             flash("Сервис рекомендаций недоступен", "danger")
     
@@ -101,9 +109,83 @@ def recommend():
 @app.route("/history")
 def history():
     if "user_id" not in session:
+        flash("Пожалуйста, войдите в систему", "warning")
         return redirect(url_for("login"))
-    history = RecommendationHistory.query.filter_by(user_id=session["user_id"]).order_by(RecommendationHistory.created_at.desc()).all()
-    return render_template("history.html", history=history)
+    
+    try:
+        # Используем правильный импорт модели
+        from models import RecommendationHistory
+        
+        history_list = RecommendationHistory.query.filter_by(
+            user_id=session["user_id"]
+        ).order_by(RecommendationHistory.created_at.desc()).all()
+        
+        # Парсим данные
+        history_data = []
+        for item in history_list:
+            try:
+                game_ids = json.loads(item.game_ids) if item.game_ids else []
+            except:
+                game_ids = []
+            
+            history_data.append({
+                'id': item.id,
+                'game_ids': game_ids,
+                'created_at': item.created_at
+            })
+        
+        return render_template("history.html", history=history_data)
+    except Exception as e:
+        logger.error(f"Ошибка в history: {e}")
+        flash("Ошибка загрузки истории", "danger")
+        return render_template("history.html", history=[])
+
+@app.route("/search-by-text", methods=["POST"])
+def search_by_text():
+    """Поиск игр по текстовому описанию"""
+    if "user_id" not in session:
+        flash("Пожалуйста, войдите в систему", "warning")
+        return redirect(url_for("login"))
+    
+    query = request.form.get("query", "").strip()
+    genres_filter = request.form.getlist("genres_filter")
+    
+    if not query:
+        flash("Введите поисковый запрос", "warning")
+        return redirect(url_for("recommend"))
+    
+    # Добавляем фильтр жанров к запросу
+    if genres_filter:
+        query = f"{query} {' '.join(genres_filter)}"
+    
+    try:
+        response = requests.post(
+            f"{app.config['RECOMMENDER_API_URL']}/search-by-text",
+            json={"query": query, "n_results": 30},
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        recommendations = data.get("recommendations", [])
+        
+        # Сохраняем в историю
+        game_ids = [r["game_id"] for r in recommendations]
+        history = RecommendationHistory(
+            user_id=session["user_id"],
+            game_ids=json.dumps(game_ids)
+        )
+        db.session.add(history)
+        db.session.commit()
+        
+        flash(f"Найдено {len(recommendations)} игр по запросу '{query}'", "success")
+        return render_template("recommend.html", 
+                             recommendations=recommendations, 
+                             search_query=query,
+                             form=RecommendForm())
+    except Exception as e:
+        logger.error(f"Ошибка при поиске: {e}")
+        flash(f"Ошибка: {str(e)}", "danger")
+        return redirect(url_for("recommend"))
 
 if __name__ == "__main__":
     with app.app_context():

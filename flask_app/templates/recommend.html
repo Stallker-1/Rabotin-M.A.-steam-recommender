@@ -10,26 +10,55 @@
                 <h4 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Настройки рекомендаций</h4>
             </div>
             <div class="card-body">
-                <form method="POST">
-                    {{ form.hidden_tag() }}
-                    <div class="mb-3">
-                        <label class="form-label">
-                            <i class="fas fa-id-card me-1"></i>ID пользователя (опционально)
-                        </label>
-                        {{ form.user_id(class="form-control", placeholder="Оставьте пустым для использования вашего профиля") }}
-                        <small class="text-muted">Если у вас уже есть история игр, укажите ID</small>
+                <!-- Навигация по вкладкам -->
+                <ul class="nav nav-tabs mb-3" id="recommendTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="genres-tab" data-bs-toggle="tab" data-bs-target="#genres-pane" type="button" role="tab">
+                            <i class="fas fa-tags me-1"></i> По жанрам
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="search-tab" data-bs-toggle="tab" data-bs-target="#search-pane" type="button" role="tab">
+                            <i class="fas fa-search me-1"></i> Текстовый поиск
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content" id="recommendTabContent">
+                    <!-- Вкладка: По жанрам -->
+                    <div class="tab-pane fade show active" id="genres-pane" role="tabpanel">
+                        <form method="POST" action="{{ url_for('recommend') }}">
+                            {{ form.hidden_tag() }}
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="fas fa-tags me-1"></i>Предпочитаемые жанры
+                                </label>
+                                {{ form.genres(class="form-select", size=8, multiple=true) }}
+                                <small class="text-muted">Hold Ctrl/Cmd для выбора нескольких жанров</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-magic me-2"></i>Получить рекомендации
+                            </button>
+                        </form>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">
-                            <i class="fas fa-tags me-1"></i>Предпочитаемые жанры
-                        </label>
-                        {{ form.genres(class="form-select", size=5) }}
-                        <small class="text-muted">Выберите жанры, которые вам нравятся (можно несколько)</small>
+                    
+                    <!-- Вкладка: Текстовый поиск -->
+                    <div class="tab-pane fade" id="search-pane" role="tabpanel">
+                        <form method="POST" action="{{ url_for('search_by_text') }}">
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="fas fa-keyboard me-1"></i>Опишите желаемую игру
+                                </label>
+                                <textarea name="query" class="form-control" rows="3" 
+                                    placeholder="Например:&#10;• стратегия с зомби&#10;• RPG с открытым миром&#10;• космический симулятор"></textarea>
+                                <small class="text-muted">Используйте ключевые слова: жанры, темы, механики</small>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="fas fa-search me-2"></i>Найти игры
+                            </button>
+                        </form>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-magic me-2"></i>Получить рекомендации
-                    </button>
-                </form>
+                </div>
             </div>
         </div>
         
@@ -38,10 +67,15 @@
                 <h5><i class="fas fa-info-circle me-2"></i>Как это работает?</h5>
                 <p class="small">Система использует:</p>
                 <ul class="small">
-                    <li><strong>Collaborative Filtering</strong> - находит пользователей с похожими вкусами</li>
                     <li><strong>Content-Based</strong> - рекомендует игры с похожими жанрами</li>
-                    <li><strong>Hybrid подход</strong> - комбинирует оба метода для лучших результатов</li>
+                    <li><strong>Text Search</strong> - поиск по названию, жанрам и описанию</li>
+                    <li><strong>Real Steam Data</strong> - <strong>114,299</strong> игр в базе</li>
                 </ul>
+                <hr>
+                <div class="alert alert-info small mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Совет:</strong> Для лучших результатов используйте 2-3 ключевых слова
+                </div>
             </div>
         </div>
     </div>
@@ -51,32 +85,51 @@
             <div class="card shadow">
                 <div class="card-header bg-success text-white">
                     <h4 class="mb-0">
-                        <i class="fas fa-star me-2"></i>Ваши персональные рекомендации
+                        <i class="fas fa-star me-2"></i>
+                        {% if search_query %}
+                            Результаты поиска: "{{ search_query }}"
+                        {% else %}
+                            Рекомендации по вашим жанрам
+                        {% endif %}
+                        <span class="badge bg-light text-dark ms-2">{{ recommendations|length }} игр</span>
                     </h4>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         {% for game in recommendations %}
-                            <div class="col-md-6">
-                                <div class="card game-card">
+                            <div class="col-md-6 mb-3">
+                                <div class="card game-card h-100">
+                                    <!-- Картинка игры с рабочего Steam CDN -->
+                                    <div style="height: 140px; overflow: hidden; background-color: #1a1a2e;">
+                                        <img src="https://steamcdn-a.akamaihd.net/steam/apps/{{ game.game_id }}/header.jpg" 
+                                             class="w-100 h-100" 
+                                             alt="{{ game.name }}"
+                                             style="object-fit: cover; width: 100%; height: 140px;"
+                                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\'w-100 h-100 d-flex align-items-center justify-content-center bg-dark text-white\'><i class=\'fas fa-gamepad fa-3x\'></i><span class=\'ms-2\'>{{ game.name[:30] }}</span></div>'">
+                                    </div>
+                                    
                                     <div class="card-body">
-                                        <h5 class="card-title">
-                                            <i class="fas fa-gamepad text-primary me-2"></i>
-                                            {{ game.name }}
-                                        </h5>
+                                        <h6 class="card-title">{{ game.name }}</h6>
+                                        
+                                        <!-- Жанры -->
                                         <div class="mb-2">
                                             {% for genre in game.genres[:3] %}
-                                                <span class="badge genre-badge">{{ genre }}</span>
+                                                <span class="badge bg-secondary me-1">{{ genre }}</span>
                                             {% endfor %}
+                                            {% if game.genres|length > 3 %}
+                                                <span class="badge bg-secondary">+{{ game.genres|length - 3 }}</span>
+                                            {% endif %}
                                         </div>
-                                        <div class="recommendation-score">
-                                            <i class="fas fa-chart-line me-1"></i>
-                                            Рейтинг рекомендации: {{ "%.0f"|format(game.score * 100) }}%
-                                        </div>
+                                        
+                                        <!-- Процент совместимости -->
                                         <div class="mt-2">
-                                            <span class="badge bg-secondary">
-                                                <i class="fas fa-tag me-1"></i>{{ game.recommendation_type }}
-                                            </span>
+                                            <div class="progress" style="height: 5px;">
+                                                <div class="progress-bar bg-success" 
+                                                     role="progressbar" 
+                                                     style="width: {{ (game.score * 100)|round }}%">
+                                                </div>
+                                            </div>
+                                            <small class="text-muted">{{ (game.score * 100)|round }}% совместимость</small>
                                         </div>
                                     </div>
                                 </div>
@@ -91,16 +144,46 @@
                     <i class="fas fa-gamepad fa-4x text-muted mb-3"></i>
                     <h4>Настройте параметры рекомендаций</h4>
                     <p class="text-muted">
-                        Выберите жанры или укажите ваш ID пользователя,<br>
-                        чтобы получить персонализированные рекомендации игр
+                        Выберите жанры слева или используйте текстовый поиск,<br>
+                        чтобы получить персонализированные рекомендации игр из Steam
                     </p>
-                    <div class="alert alert-info mt-3">
-                        <i class="fas fa-lightbulb me-2"></i>
-                        <strong>Совет:</strong> Для лучших результатов выберите 2-3 любимых жанра
-                    </div>
                 </div>
             </div>
         {% endif %}
     </div>
 </div>
+
+<style>
+    .game-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        overflow: hidden;
+        border-radius: 8px;
+    }
+    .game-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .card-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .progress {
+        background-color: #e9ecef;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    select[multiple] {
+        min-height: 200px;
+    }
+    textarea {
+        resize: vertical;
+    }
+    .badge {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+</style>
 {% endblock %}

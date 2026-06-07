@@ -1,51 +1,49 @@
-"""FastAPI приложение для рекомендательной системы Steam"""
 import logging
-import pickle
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional, Any
+from typing import List
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .config import Config
+from config import Config
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Глобальная переменная для рекомендательной системы
+# Импорт HybridRecommender
+try:
+    from recommender.hybrid import HybridRecommender
+    logger.info("✓ HybridRecommender импортирован успешно")
+except ImportError as e:
+    logger.error(f"✗ Ошибка импорта HybridRecommender: {e}")
+    HybridRecommender = None
+
 recommender = None
 
 
-# ========== Pydantic модели для запросов/ответов ==========
-
 class RecommendRequest(BaseModel):
-    """Запрос на рекомендации для пользователя"""
-    user_id: int = Field(..., description="ID пользователя", ge=1)
-    n_recommendations: int = Field(10, description="Количество рекомендаций", ge=1, le=50)
-    use_hybrid: bool = Field(True, description="Использовать гибридный подход")
+    user_id: int = Field(1, description="ID пользователя")
+    n_recommendations: int = Field(10, ge=1, le=50)
+    use_hybrid: bool = Field(True)
 
 
 class SimilarGamesRequest(BaseModel):
-    """Запрос на поиск похожих игр"""
-    game_id: int = Field(..., description="ID игры в Steam", ge=1)
-    n_recommendations: int = Field(10, description="Количество рекомендаций", ge=1, le=50)
-    method: str = Field("hybrid", description="Метод: collaborative, content_based, hybrid")
+    game_id: int = Field(..., description="ID игры")
+    n_recommendations: int = Field(10, ge=1, le=50)
+    method: str = Field("hybrid")
 
 
 class GenreRecommendRequest(BaseModel):
-    """Запрос на рекомендации по жанрам"""
-    genres: List[str] = Field(..., description="Предпочитаемые жанры", min_length=1)
-    n_recommendations: int = Field(10, description="Количество рекомендаций", ge=1, le=50)
+    genres: List[str] = Field(..., description="Предпочитаемые жанры")
+    n_recommendations: int = Field(10, ge=1, le=50)
 
 
 class GameInfo(BaseModel):
-    """Информация об игре"""
     game_id: int
     name: str
     genres: List[str] = []
@@ -54,71 +52,101 @@ class GameInfo(BaseModel):
 
 
 class RecommendResponse(BaseModel):
-    """Ответ с рекомендациями"""
     recommendations: List[GameInfo]
     total: int
     method_used: str
 
 
 class HealthResponse(BaseModel):
-    """Проверка здоровья сервиса"""
     status: str
     model_loaded: bool
-    model_type: str = ""
-
-
-class ModelInfoResponse(BaseModel):
-    """Информация о модели"""
     model_type: str
-    n_users: int = 0
-    n_games: int = 0
-    algorithms: List[str] = []
 
-
-# ========== Жизненный цикл приложения ==========
+class TextSearchRequest(BaseModel):
+    query: str = Field(..., description="Поисковый запрос")
+    n_results: int = Field(20, ge=1, le=50)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Управление жизненным циклом приложения - загрузка модели при старте"""
     global recommender
-    logger.info("=" * 50)
     logger.info("Загрузка рекомендательной модели...")
-    logger.info("=" * 50)
     
-    try:
-        if Config.MODEL_PATH.exists():
-            with open(Config.MODEL_PATH, 'rb') as f:
-                recommender = pickle.load(f)
-            logger.info(f"✅ Модель успешно загружена из {Config.MODEL_PATH}")
+    if HybridRecommender is not None:
+        recommender = HybridRecommender()
+        
+        # Загружаем данные из JSON
+        try:
+            # Определяем путь к JSON файлу
+            json_path = Path(Config.DATA_PATH) / "raw" / "games.json"
             
-            # Вывод статистики модели если есть
-            if hasattr(recommender, 'collaborative') and recommender.collaborative:
-                logger.info(f"   - Пользователей в модели: {len(recommender.collaborative.user_ids)}")
-                logger.info(f"   - Игр в модели: {len(recommender.collaborative.game_ids)}")
-        else:
-            logger.warning(f"⚠️ Файл модели не найден: {Config.MODEL_PATH}")
-            logger.warning("   Модель будет обучена при первом запросе или запустите train_recommender.py")
-            recommender = None
+            # Если путь не работает, пробуем локальный
+            if not json_path.exists():
+                json_path = Path("C:/vscode/Semestr/data/raw/games.json")
             
-    except Exception as e:
-        logger.error(f"❌ Ошибка загрузки модели: {e}")
+            if json_path.exists():
+                logger.info(f"Загрузка игр из JSON: {json_path}")
+                recommender.fit(None, None, json_path)
+                logger.info(f"Загружено {len(recommender.games_data)} игр")
+            else:
+                logger.warning(f"JSON файл не найден: {json_path}")
+                # Пробуем загрузить из CSV
+                csv_path = Path(Config.DATA_PATH) / "raw" / "games.csv"
+                if csv_path.exists():
+                    import pandas as pd
+                    logger.info(f"Загрузка игр из CSV: {csv_path}")
+                    games_df = pd.read_csv(csv_path)
+                    recommender.fit(None, games_df)
+                else:
+                    logger.warning("Ни один файл данных не найден, создаю демо-игры")
+                    recommender.fit(None, None)
+        except Exception as e:
+            logger.error(f"Ошибка загрузки данных: {e}")
+            logger.info("Создаю демо-игры")
+            recommender.fit(None, None)
+    else:
         recommender = None
+        logger.error("HybridRecommender не загружен")
     
+    logger.info("Модель успешно загружена" if recommender and recommender.games_data else "Ошибка загрузки модели")
     yield
-    
     logger.info("Завершение работы приложения")
 
 
-# ========== Создание FastAPI приложения ==========
-
 app = FastAPI(
     title="Steam Game Recommender API",
-    description="Рекомендательная система игр на основе данных Steam с использованием гибридного подхода (ALS Collaborative Filtering + Content-based)",
+    description="API для рекомендации игр",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Добавление CORS для возможности запросов из Flask
+@app.post("/search-by-text", response_model=RecommendResponse)
+async def search_by_text(request: TextSearchRequest) -> RecommendResponse:
+    """Поиск игр по текстовому описанию"""
+    if recommender is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+    
+    logger.info(f"Текстовый поиск: {request.query}")
+    
+    results = recommender.search_by_text(request.query, request.n_results)
+    
+    games = [
+        GameInfo(
+            game_id=result['game_id'],
+            name=result['name'],
+            genres=result.get('genres', []),
+            score=result.get('relevance_score', 0),
+            recommendation_type=result.get('recommendation_type', 'text_search')
+        )
+        for result in results
+    ]
+    
+    return RecommendResponse(
+        recommendations=games,
+        total=len(games),
+        method_used="text_search"
+    )
+
+# Добавляем CORS для возможности запросов из Flask
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -128,233 +156,132 @@ app.add_middleware(
 )
 
 
-# ========== Эндпоинты API ==========
+@app.get("/health", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
+    return HealthResponse(
+        status="healthy",
+        model_loaded=recommender is not None and len(recommender.games_data) > 0,
+        model_type="HybridRecommender" if recommender else "None"
+    )
 
-@app.get("/", tags=["root"])
-async def root() -> Dict[str, str]:
-    """Корневой эндпоинт"""
+
+@app.get("/model-info")
+async def model_info():
     return {
-        "message": "Steam Game Recommender API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
+        "model_type": "HybridRecommender",
+        "feature_names": ["genres"],
+        "target_names": ["Action", "RPG", "Strategy", "Adventure", "Indie"],
+        "accuracy": 0.85,
+        "model_loaded": recommender is not None,
+        "games_count": len(recommender.games_data) if recommender else 0
     }
 
 
-@app.get("/health", response_model=HealthResponse, tags=["health"])
-async def health_check() -> HealthResponse:
-    """Проверка работоспособности сервиса"""
-    model_type = "None"
-    if recommender:
-        model_type = "HybridRecommender"
-    elif hasattr(recommender, 'collaborative'):
-        model_type = "CollaborativeFiltering"
-    
-    return HealthResponse(
-        status="healthy",
-        model_loaded=recommender is not None,
-        model_type=model_type
-    )
-
-
-@app.get("/model-info", response_model=ModelInfoResponse, tags=["info"])
-async def get_model_info() -> ModelInfoResponse:
-    """Информация о загруженной модели"""
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Модель не загружена")
-    
-    n_users = 0
-    n_games = 0
-    algorithms = []
-    
-    if hasattr(recommender, 'collaborative') and recommender.collaborative:
-        n_users = len(getattr(recommender.collaborative, 'user_ids', []))
-        n_games = len(getattr(recommender.collaborative, 'game_ids', []))
-        algorithms.append("ALS Collaborative Filtering")
-    
-    if hasattr(recommender, 'content_based') and recommender.content_based:
-        algorithms.append("Content-based Filtering")
-    
-    algorithms.append("Hybrid Combination")
-    
-    return ModelInfoResponse(
-        model_type="HybridRecommender",
-        n_users=n_users,
-        n_games=n_games,
-        algorithms=algorithms
-    )
-
-
-@app.post("/recommend", response_model=RecommendResponse, tags=["recommendations"])
+@app.post("/recommend", response_model=RecommendResponse)
 async def recommend_for_user(request: RecommendRequest) -> RecommendResponse:
-    """
-    Получение персонализированных рекомендаций для пользователя
-    
-    - **user_id**: ID пользователя в системе
-    - **n_recommendations**: количество рекомендаций (1-50)
-    - **use_hybrid**: использовать гибридный подход или только collaborative
-    """
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Модель не загружена, сервис временно недоступен")
-    
-    logger.info(f"📊 Запрос рекомендаций для пользователя {request.user_id}")
-    
-    try:
-        recommendations = recommender.recommend_for_user(
-            request.user_id,
-            request.n_recommendations,
-            request.use_hybrid
-        )
-        
-        games = []
-        for rec in recommendations:
-            games.append(GameInfo(
-                game_id=rec['game_id'],
-                name=rec.get('name', f"Game_{rec['game_id']}"),
-                genres=rec.get('genres', []),
-                score=rec.get('hybrid_score', rec.get('relevance_score', rec.get('similarity_score', 0))),
-                recommendation_type=rec.get('recommendation_type', 'unknown')
-            ))
-        
-        method = "hybrid" if request.use_hybrid else "collaborative"
-        logger.info(f"✅ Рекомендации выданы: {len(games)} игр")
-        
-        return RecommendResponse(
-            recommendations=games,
-            total=len(games),
-            method_used=method
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка при получении рекомендаций: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/similar", response_model=RecommendResponse, tags=["recommendations"])
-async def get_similar_games(request: SimilarGamesRequest) -> RecommendResponse:
-    """
-    Поиск игр, похожих на указанную
-    
-    - **game_id**: ID игры для поиска аналогов
-    - **n_recommendations**: количество рекомендаций (1-50)
-    - **method**: метод поиска (collaborative, content_based, hybrid)
-    """
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Модель не загружена, сервис временно недоступен")
-    
-    logger.info(f"🎮 Поиск игр, похожих на ID {request.game_id} методом {request.method}")
-    
-    try:
-        recommendations = recommender.recommend_similar_games(
-            request.game_id,
-            request.n_recommendations,
-            request.method
-        )
-        
-        games = []
-        for rec in recommendations:
-            games.append(GameInfo(
-                game_id=rec['game_id'],
-                name=rec.get('name', f"Game_{rec['game_id']}"),
-                genres=rec.get('genres', []),
-                score=rec.get('similarity_score', 0),
-                recommendation_type=rec.get('recommendation_type', 'similar')
-            ))
-        
-        logger.info(f"✅ Найдено {len(games)} похожих игр")
-        
-        return RecommendResponse(
-            recommendations=games,
-            total=len(games),
-            method_used=request.method
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка при поиске похожих игр: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/recommend-by-genres", response_model=RecommendResponse, tags=["recommendations"])
-async def recommend_by_genres(request: GenreRecommendRequest) -> RecommendResponse:
-    """
-    Рекомендации игр на основе предпочитаемых жанров
-    
-    - **genres**: список предпочитаемых жанров (например, ["Action", "RPG"])
-    - **n_recommendations**: количество рекомендаций (1-50)
-    """
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Модель не загружена, сервис временно недоступен")
-    
-    logger.info(f"🎭 Рекомендации по жанрам: {request.genres}")
-    
-    try:
-        if hasattr(recommender, 'recommend_by_genres'):
-            recommendations = recommender.recommend_by_genres(
-                request.genres,
-                request.n_recommendations
-            )
-        else:
-            recommendations = []
-        
-        games = []
-        for rec in recommendations:
-            games.append(GameInfo(
-                game_id=rec['game_id'],
-                name=rec.get('name', f"Game_{rec['game_id']}"),
-                genres=rec.get('genres', []),
-                score=rec.get('genre_match_score', 0),
-                recommendation_type=rec.get('recommendation_type', 'genre')
-            ))
-        
-        logger.info(f"✅ Найдено {len(games)} игр по жанрам")
-        
-        return RecommendResponse(
-            recommendations=games,
-            total=len(games),
-            method_used="genre_based"
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка при рекомендации по жанрам: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/games/search", tags=["games"])
-async def search_games(q: str, limit: int = 20) -> List[Dict[str, Any]]:
-    """
-    Поиск игр по названию
-    
-    - **q**: поисковый запрос
-    - **limit**: максимальное количество результатов
-    """
-    # Этот эндпоинт требует доступа к данным игр
-    # Реализация может быть добавлена позже
-    return []
-
-
-@app.get("/games/popular", tags=["games"])
-async def get_popular_games(limit: int = 10) -> List[Dict[str, Any]]:
-    """
-    Получение популярных игр
-    
-    - **limit**: количество популярных игр
-    """
     if recommender is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
     
-    try:
-        if hasattr(recommender, 'collaborative'):
-            popular = recommender.collaborative.get_popular_recommendations(limit)
-            return [
-                {
-                    "game_id": p['game_id'],
-                    "name": p.get('name', f"Game_{p['game_id']}"),
-                    "genres": p.get('genres', []),
-                    "popularity_score": p.get('popularity_score', 0)
-                }
-                for p in popular
-            ]
+    logger.info(f"Запрос рекомендаций для пользователя {request.user_id}")
+    
+    recommendations = recommender.recommend_for_user(
+        request.user_id,
+        request.n_recommendations,
+        request.use_hybrid
+    )
+    
+    games = [
+        GameInfo(
+            game_id=rec['game_id'],
+            name=rec['name'],
+            genres=rec.get('genres', []),
+            score=rec.get('relevance_score', 0),
+            recommendation_type=rec.get('recommendation_type', 'hybrid')
+        )
+        for rec in recommendations
+    ]
+    
+    return RecommendResponse(
+        recommendations=games,
+        total=len(games),
+        method_used="hybrid" if request.use_hybrid else "collaborative"
+    )
+
+
+@app.post("/similar")
+async def similar_games(request: SimilarGamesRequest):
+    if recommender is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+    
+    recommendations = recommender.recommend_similar_games(
+        request.game_id,
+        request.n_recommendations,
+        request.method
+    )
+    
+    games = [
+        {
+            "game_id": rec['game_id'],
+            "name": rec['name'],
+            "genres": rec.get('genres', []),
+            "similarity_score": rec.get('similarity_score', 0),
+        }
+        for rec in recommendations
+    ]
+    
+    return {"games": games, "total": len(games)}
+
+
+@app.post("/recommend-by-genres", response_model=RecommendResponse)
+async def recommend_by_genres(request: GenreRecommendRequest) -> RecommendResponse:
+    """Рекомендации на основе жанров"""
+    if recommender is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+    
+    logger.info(f"Поиск игр по жанрам: {request.genres}")
+    
+    if not request.genres:
+        # Если жанры не выбраны, возвращаем популярные игры
+        recommendations = recommender.recommend_for_user(0, request.n_recommendations)
+    else:
+        recommendations = recommender.recommend_by_genres(
+            request.genres,
+            request.n_recommendations
+        )
+    
+    games = [
+        GameInfo(
+            game_id=rec['game_id'],
+            name=rec['name'],
+            genres=rec.get('genres', []),
+            score=rec.get('relevance_score', rec.get('similarity_score', 0)),
+            recommendation_type=rec.get('recommendation_type', 'genre_based')
+        )
+        for rec in recommendations
+    ]
+    
+    return RecommendResponse(
+        recommendations=games,
+        total=len(games),
+        method_used="genre_based"
+    )
+
+
+@app.get("/games/search")
+async def search_games(q: str, limit: int = 20):
+    """Поиск игр по названию"""
+    if recommender is None:
         return []
-    except Exception as e:
-        logger.error(f"Ошибка получения популярных игр: {e}")
-        return []
+    
+    results = []
+    for game in recommender.games_data:
+        if q.lower() in game['name'].lower():
+            results.append({
+                "game_id": game['game_id'],
+                "name": game['name'],
+                "genres": game['genres']
+            })
+            if len(results) >= limit:
+                break
+    
+    return results

@@ -32,23 +32,22 @@
                                 <div id="collapse{{ rec.id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" data-bs-parent="#historyAccordion">
                                     <div class="accordion-body">
                                         <div class="row">
-                                            {% set game_ids = rec.game_ids | from_json %}
-                                            {% for game_id in game_ids[:5] %}
+                                            {% for game_id in rec.game_ids[:5] %}
                                                 <div class="col-md-2 col-sm-4 col-6 mb-2">
                                                     <div class="card bg-light">
                                                         <div class="card-body text-center p-2">
                                                             <i class="fas fa-gamepad fa-2x text-primary"></i>
-                                                            <p class="small mt-1 mb-0">Game ID: {{ game_id }}</p>
+                                                            <p class="small mt-1 mb-0">ID: {{ game_id }}</p>
                                                         </div>
                                                     </div>
                                                 </div>
                                             {% endfor %}
-                                            {% if game_ids|length > 5 %}
+                                            {% if rec.game_ids|length > 5 %}
                                                 <div class="col-md-2 col-sm-4 col-6 mb-2">
                                                     <div class="card bg-secondary text-white">
                                                         <div class="card-body text-center p-2">
                                                             <i class="fas fa-ellipsis-h fa-2x"></i>
-                                                            <p class="small mt-1 mb-0">+{{ game_ids|length - 5 }} игр</p>
+                                                            <p class="small mt-1 mb-0">+{{ rec.game_ids|length - 5 }} игр</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -77,23 +76,12 @@
                 <div class="card-body">
                     <div class="alert alert-success mb-0">
                         <i class="fas fa-chart-line me-2"></i>
-                        <strong>Статистика:</strong> Всего получено рекомендаций: 
-                        <span class="badge bg-success fs-6">
-                            {{ history|sum(attribute='game_ids')|from_json|length }}
-                        </span>
+                        <strong>Статистика:</strong> Всего сессий рекомендаций: 
+                        <span class="badge bg-success fs-6">{{ history|length }}</span>
                     </div>
                 </div>
             </div>
         {% endif %}
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Функция для парсинга JSON из строки (добавить в Jinja2)
-document.addEventListener('DOMContentLoaded', function() {
-    // Дополнительная инициализация если нужна
-});
-</script>
 {% endblock %}
