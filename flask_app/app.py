@@ -154,9 +154,10 @@ def search_by_text():
         flash("Введите поисковый запрос", "warning")
         return redirect(url_for("recommend"))
     
-    # Добавляем фильтр жанров к запросу
+    # Если есть фильтр по жанрам, добавляем его к запросу
     if genres_filter:
         query = f"{query} {' '.join(genres_filter)}"
+        flash(f"Поиск: {query}", "info")
     
     try:
         response = requests.post(

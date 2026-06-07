@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.python-version
 env/
 venv/
 .venv/
@@ -15,6 +16,7 @@ venv.bak/
 .eggs/
 dist/
 build/
+flask_app/instance/*.db
 
 # IDE
 .vscode/
@@ -30,6 +32,7 @@ build/
 
 # Database
 *.db
+*.db-journal
 *.sqlite
 *.sqlite3
 
