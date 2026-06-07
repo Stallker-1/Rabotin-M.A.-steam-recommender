@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: steam_db
+    environment:
+      POSTGRES_USER: ${DB_USER:-steamuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-steampassword}
+      POSTGRES_DB: ${DB_NAME:-steamdb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - steam_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-steamuser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fastapi:
+    build: ./fastapi_app
+    container_name: steam_fastapi
+    environment:
+      DATA_PATH: /app/data
+      MODEL_PATH: /app/recommender/model.pkl
+    volumes:
+      - ./data:/app/data
+      - ./fastapi_app/recommender:/app/recommender
+    ports:
+      - "8000:8000"
+    networks:
+      - steam_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  flask:
+    build: ./flask_app
+    container_name: steam_flask
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key}
+      DATABASE_URL: postgresql://${DB_USER:-steamuser}:${DB_PASSWORD:-steampassword}@db:5432/${DB_NAME:-steamdb}
+      RECOMMENDER_API_URL: http://fastapi:8000
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    networks:
+      - steam_network
+
+networks:
+  steam_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
