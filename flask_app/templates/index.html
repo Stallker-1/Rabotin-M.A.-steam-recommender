@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - Steam Recommender{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto text-center">
+        <div class="jumbotron bg-light p-5 rounded-3 mb-4">
+            <h1 class="display-4">
+                <i class="fas fa-gamepad text-primary me-3"></i>
+                Добро пожаловать в Steam Recommender
+            </h1>
+            <p class="lead mt-4">
+                Персональная рекомендательная система для поиска идеальных игр в Steam
+            </p>
+            <hr class="my-4">
+            <p>Наша система использует гибридный подход для рекомендаций:</p>
+            <div class="row mt-4 mb-4">
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <i class="fas fa-users fa-3x text-primary mb-3"></i>
+                            <h5>Collaborative Filtering</h5>
+                            <p class="small">Анализ поведения похожих пользователей</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <i class="fas fa-tags fa-3x text-success mb-3"></i>
+                            <h5>Content-Based</h5>
+                            <p class="small">Рекомендации на основе жанров и описаний</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <i class="fas fa-chart-line fa-3x text-warning mb-3"></i>
+                            <h5>Hybrid Approach</h5>
+                            <p class="small">Комбинация методов для лучших результатов</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {% if not current_user %}
+                <div class="mt-4">
+                    <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-3">
+                        <i class="fas fa-user-plus me-2"></i>Начать
+                    </a>
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-secondary btn-lg">
+                        <i class="fas fa-sign-in-alt me-2"></i>Войти
+                    </a>
+                </div>
+            {% else %}
+                <div class="mt-4">
+                    <a href="{{ url_for('recommend') }}" class="btn btn-success btn-lg">
+                        <i class="fas fa-magic me-2"></i>Получить рекомендации
+                    </a>
+                    <a href="{{ url_for('history') }}" class="btn btn-info btn-lg ms-3">
+                        <i class="fas fa-history me-2"></i>Моя история
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="row mt-5">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Статистика датасета</h5>
+                    </div>
+                    <div class="card-body text-start">
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-gamepad text-primary me-2"></i> <strong>15,000+</strong> игр в базе</li>
+                            <li><i class="fas fa-users text-success me-2"></i> <strong>10,000+</strong> пользователей</li>
+                            <li><i class="fas fa-star text-warning me-2"></i> <strong>500,000+</strong> взаимодействий</li>
+                            <li><i class="fas fa-tag text-info me-2"></i> <strong>50+</strong> уникальных жанров</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-crown me-2"></i>Популярные жанры</h5>
+                    </div>
+                    <div class="card-body">
+                        <span class="badge bg-primary m-1">Action</span>
+                        <span class="badge bg-danger m-1">Adventure</span>
+                        <span class="badge bg-success m-1">RPG</span>
+                        <span class="badge bg-warning m-1">Strategy</span>
+                        <span class="badge bg-info m-1">Indie</span>
+                        <span class="badge bg-secondary m-1">Simulation</span>
+                        <span class="badge bg-dark m-1">Sports</span>
+                        <span class="badge bg-primary m-1">Racing</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

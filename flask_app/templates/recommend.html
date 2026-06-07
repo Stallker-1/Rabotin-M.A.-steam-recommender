@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Рекомендации игр - Steam Recommender{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Настройки рекомендаций</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-id-card me-1"></i>ID пользователя (опционально)
+                        </label>
+                        {{ form.user_id(class="form-control", placeholder="Оставьте пустым для использования вашего профиля") }}
+                        <small class="text-muted">Если у вас уже есть история игр, укажите ID</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-tags me-1"></i>Предпочитаемые жанры
+                        </label>
+                        {{ form.genres(class="form-select", size=5) }}
+                        <small class="text-muted">Выберите жанры, которые вам нравятся (можно несколько)</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-magic me-2"></i>Получить рекомендации
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5><i class="fas fa-info-circle me-2"></i>Как это работает?</h5>
+                <p class="small">Система использует:</p>
+                <ul class="small">
+                    <li><strong>Collaborative Filtering</strong> - находит пользователей с похожими вкусами</li>
+                    <li><strong>Content-Based</strong> - рекомендует игры с похожими жанрами</li>
+                    <li><strong>Hybrid подход</strong> - комбинирует оба метода для лучших результатов</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8">
+        {% if recommendations %}
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-star me-2"></i>Ваши персональные рекомендации
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for game in recommendations %}
+                            <div class="col-md-6">
+                                <div class="card game-card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="fas fa-gamepad text-primary me-2"></i>
+                                            {{ game.name }}
+                                        </h5>
+                                        <div class="mb-2">
+                                            {% for genre in game.genres[:3] %}
+                                                <span class="badge genre-badge">{{ genre }}</span>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="recommendation-score">
+                                            <i class="fas fa-chart-line me-1"></i>
+                                            Рейтинг рекомендации: {{ "%.0f"|format(game.score * 100) }}%
+                                        </div>
+                                        <div class="mt-2">
+                                            <span class="badge bg-secondary">
+                                                <i class="fas fa-tag me-1"></i>{{ game.recommendation_type }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="card shadow">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-gamepad fa-4x text-muted mb-3"></i>
+                    <h4>Настройте параметры рекомендаций</h4>
+                    <p class="text-muted">
+                        Выберите жанры или укажите ваш ID пользователя,<br>
+                        чтобы получить персонализированные рекомендации игр
+                    </p>
+                    <div class="alert alert-info mt-3">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Совет:</strong> Для лучших результатов выберите 2-3 любимых жанра
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
