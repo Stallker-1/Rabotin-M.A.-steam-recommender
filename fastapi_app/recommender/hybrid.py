@@ -16,6 +16,7 @@ class HybridRecommender:
         self.alpha = alpha
         self.games_data = []
         self.word_weights = {}
+        logger.info("HybridRecommender initialized")
     
     def is_adult_content(self, game: Dict) -> bool:
         """Проверка на 18+ по названию, жанрам и описанию"""
@@ -34,7 +35,7 @@ class HybridRecommender:
             'blowjob', 'handjob', 'strip', 'stripper', 'censor', 'uncensored',
             'boobs', 'boob', 'tits', 'breast', 'busty', 'cleavage', 'booty',
             'sexy girl', 'hot girl', 'anime girl', 'sexy zombie',
-            'dating sim', 'waifu', 'harem', 'seduce', 'sensual',
+            'dating sim', 'waifu', 'harem', 'sensual',
             'mature content', 'adult content', 'explicit', 'nudity'
         ]
         
@@ -84,17 +85,19 @@ class HybridRecommender:
             genres = [str(g).strip() for g in genres if g and str(g).strip()]
             
             popularity = 50
+            recommendations_count = 0
+            positive_count = 0
+            
             if 'recommendations' in game_data and game_data['recommendations']:
                 try:
-                    popularity = min(100, int(game_data['recommendations']) // 100)
+                    recommendations_count = int(game_data['recommendations'])
+                    popularity = min(100, recommendations_count // 100)
                 except:
                     pass
-            elif 'positive' in game_data and game_data['positive']:
+            
+            if 'positive' in game_data and game_data['positive']:
                 try:
-                    pos = int(game_data['positive'])
-                    neg = int(game_data.get('negative', 0))
-                    if pos + neg > 0:
-                        popularity = int((pos / (pos + neg)) * 100)
+                    positive_count = int(game_data['positive'])
                 except:
                     pass
             
@@ -107,6 +110,8 @@ class HybridRecommender:
                 'name': name,
                 'genres': genres,
                 'popularity': popularity,
+                'recommendations': recommendations_count,
+                'positive': positive_count,
                 'price': float(price) if price else 0,
                 'description': description[:500],
                 'image_url': header_image,
@@ -173,6 +178,8 @@ class HybridRecommender:
                 'name': name_str,
                 'genres': genres,
                 'popularity': random.randint(1, 100),
+                'recommendations': 0,
+                'positive': 0,
                 'price': 0,
                 'description': '',
                 'image_url': f"https://steamcdn-a.akamaihd.net/steam/apps/{game_id}/header.jpg",
@@ -207,26 +214,28 @@ class HybridRecommender:
     def _create_demo_games(self):
         """Создание демонстрационных игр"""
         demo_games = [
-            (730, "Counter-Strike: Global Offensive", ["Action", "Shooter"], 95),
-            (570, "Dota 2", ["Strategy", "MOBA"], 90),
-            (440, "Team Fortress 2", ["Action", "Shooter"], 85),
-            (10, "Half-Life", ["Action", "FPS"], 88),
-            (220, "Half-Life 2", ["Action", "FPS"], 92),
-            (400, "Portal", ["Puzzle", "Action"], 96),
-            (500, "Left 4 Dead 2", ["Action", "Horror"], 94),
-            (240, "BioShock", ["Action", "RPG"], 91),
-            (1050, "The Witcher 3", ["RPG", "Adventure"], 98),
-            (377160, "Fallout 4", ["RPG", "Action"], 87),
-            (578080, "PUBG", ["Action", "Shooter"], 82),
-            (252950, "Rocket League", ["Sports", "Action"], 89),
+            (730, "Counter-Strike: Global Offensive", ["Action", "Shooter"], 95, 1000000),
+            (570, "Dota 2", ["Strategy", "MOBA"], 90, 800000),
+            (440, "Team Fortress 2", ["Action", "Shooter"], 85, 600000),
+            (10, "Half-Life", ["Action", "FPS"], 88, 500000),
+            (220, "Half-Life 2", ["Action", "FPS"], 92, 700000),
+            (400, "Portal", ["Puzzle", "Action"], 96, 400000),
+            (500, "Left 4 Dead 2", ["Action", "Horror"], 94, 770930),
+            (240, "BioShock", ["Action", "RPG"], 91, 300000),
+            (1050, "The Witcher 3", ["RPG", "Adventure"], 98, 900000),
+            (377160, "Fallout 4", ["RPG", "Action"], 87, 500000),
+            (578080, "PUBG", ["Action", "Shooter"], 82, 700000),
+            (252950, "Rocket League", ["Sports", "Action"], 89, 600000),
         ]
         
-        for game_id, name, genres, popularity in demo_games:
+        for game_id, name, genres, popularity, recommendations in demo_games:
             self.games_data.append({
                 'game_id': game_id,
                 'name': name,
                 'genres': genres,
                 'popularity': popularity,
+                'recommendations': recommendations,
+                'positive': 0,
                 'price': 0,
                 'description': f"Популярная игра {name}",
                 'image_url': f"https://steamcdn-a.akamaihd.net/steam/apps/{game_id}/header.jpg",
@@ -242,7 +251,8 @@ class HybridRecommender:
         # Фильтруем порно-игры
         filtered_games = [game for game in self.games_data if not self.is_adult_content(game)]
         
-        sorted_games = sorted(filtered_games, key=lambda x: x['popularity'], reverse=True)
+        # Сортируем по количеству рекомендаций
+        sorted_games = sorted(filtered_games, key=lambda x: x.get('recommendations', 0), reverse=True)
         recommendations = []
         
         for game in sorted_games[:n_recommendations]:
@@ -250,7 +260,7 @@ class HybridRecommender:
                 "game_id": game['game_id'],
                 "name": game['name'],
                 "genres": game['genres'],
-                "relevance_score": game['popularity'] / 100,
+                "relevance_score": min(game.get('recommendations', 0) / 10000, 1.0),
                 "recommendation_type": "popular"
             })
         
@@ -270,6 +280,9 @@ class HybridRecommender:
             score = len(matches) / max(len(preferred_genres), 1)
             
             if score > 0:
+                # Добавляем бонус за популярность
+                recommendations = game.get('recommendations', 0)
+                score += min(0.5, recommendations / 1000000)
                 scored_games.append((game, score))
         
         scored_games.sort(key=lambda x: x[1], reverse=True)
@@ -280,7 +293,7 @@ class HybridRecommender:
                 "game_id": game['game_id'],
                 "name": game['name'],
                 "genres": game['genres'],
-                "relevance_score": min(score / 100, 1.0),
+                "relevance_score": min(score, 1.0),
                 "recommendation_type": "genre_based"
             })
         
@@ -310,6 +323,9 @@ class HybridRecommender:
             matches = set(game['genres']) & set(target_game['genres'])
             score = len(matches) / max(len(target_game['genres']), 1)
             if score > 0:
+                # Добавляем бонус за популярность
+                recommendations = game.get('recommendations', 0)
+                score += min(0.3, recommendations / 1000000)
                 scored.append((game, score))
         
         scored.sort(key=lambda x: x[1], reverse=True)
@@ -328,249 +344,130 @@ class HybridRecommender:
     
     def _build_word_weights(self):
         """Строим веса слов по всей базе игр"""
-
         logger.info("Подсчет весов слов...")
-
         word_counts = Counter()
         total_games = len(self.games_data)
 
         for game in self.games_data:
-
             words = set()
-
-            words.update(
-                w.lower()
-                for w in game.get("genres", [])
-            )
-
-            description = (
-                game.get("description", "") or ""
-            ).lower()
-
+            words.update(w.lower() for w in game.get("genres", []))
+            description = (game.get("description", "") or "").lower()
             name = game["name"].lower()
 
             for word in name.split():
                 if len(word) > 2:
                     words.add(word)
-
             for word in description.split():
                 if len(word) > 2:
                     words.add(word)
-
             for word in words:
                 word_counts[word] += 1
 
         self.word_weights = {}
-
         for word, count in word_counts.items():
-
-            # IDF
-            self.word_weights[word] = math.log(
-                (total_games + 1) / (count + 1)
-            )
-
-        logger.info(
-            f"Построены веса для {len(self.word_weights)} слов"
-        )
+            self.word_weights[word] = math.log((total_games + 1) / (count + 1))
+        logger.info(f"Построены веса для {len(self.word_weights)} слов")
     
-    def search_by_text(
-        self,
-        query: str,
-        n_results: int = 30
-    ) -> List[Dict]:
-
+    def search_by_text(self, query: str, n_results: int = 30) -> List[Dict]:
+        """Поиск игр - приоритет на точное совпадение ключевых слов"""
         if not self.games_data:
             return []
 
-        # Фильтруем порно-игры
         filtered_games = [game for game in self.games_data if not self.is_adult_content(game)]
         
         logger.info(f"Всего игр: {len(self.games_data)}, после фильтрации: {len(filtered_games)}")
 
         query_lower = query.lower()
-
-        query_words = [
-            w.strip()
-            for w in query_lower.split()
-            if len(w.strip()) > 2
-        ]
+        query_words = [w.strip() for w in query_lower.split() if len(w.strip()) > 2]
 
         translations = {
             'стратегия': ['strategy', 'strategic', 'rts', 'tactical', 'tower defense', '4x'],
             'зомби': ['zombie', 'zombies', 'undead', 'infected', 'walking dead'],
+            'шутер': ['shooter', 'fps', 'action', 'first-person shooter'],
             'симулятор': ['simulation', 'simulator'],
             'марс': ['mars'],
             'марсе': ['mars'],
             'космос': ['space'],
-            'поселение': [
-                'colony',
-                'settlement',
-                'base',
-                'city'
-            ],
-            'колония': [
-                'colony',
-                'settlement',
-                'base',
-                'city'
-            ],
-            'постройка': [
-                'building',
-                'builder',
-                'construction'
-            ],
-            'строительство': [
-                'building',
-                'builder',
-                'construction'
-            ],
-            'выживание': [
-                'survival'
-            ]
+            'поселение': ['colony', 'settlement', 'base', 'city'],
+            'колония': ['colony', 'settlement', 'base', 'city'],
+            'постройка': ['building', 'builder', 'construction'],
+            'строительство': ['building', 'builder', 'construction'],
+            'выживание': ['survival']
         }
 
         search_terms = set()
-
         for word in query_words:
-
             search_terms.add(word)
-
             if word in translations:
-                search_terms.update(
-                    translations[word]
-                )
+                search_terms.update(translations[word])
 
-        logger.info(
-            f"Поиск '{query}' -> {search_terms}"
-        )
-
-        # Список известных игр с их ключевыми словами
-        famous_games = {
-            644930: {  # They Are Billions
-                'keywords': ['strategy', 'zombie', 'survival', 'colony', 'base building'],
-                'boost': 100
-            },
-            219980: {  # Zombie Tycoon 2
-                'keywords': ['zombie', 'strategy', 'tycoon'],
-                'boost': 80
-            }
-        }
+        logger.info(f"Поиск '{query}' -> {search_terms}")
 
         scored = []
-
         for game in filtered_games:
-
             name = game["name"].lower()
-
-            genres = " ".join(
-                game.get("genres", [])
-            ).lower()
-
-            description = (
-                game.get("description", "") or ""
-            ).lower()
-
-            full_text = f"{name} {genres} {description}"
+            genres = " ".join(game.get("genres", [])).lower()
+            description = (game.get("description", "") or "").lower()
             
-            score = 0
-            matched_terms = 0
-
-            # Проверка известных игр
-            game_id = game["game_id"]
-            boost = 0
-            if game_id in famous_games:
-                famous = famous_games[game_id]
-                # Проверяем, соответствует ли игра запросу
-                query_matches = 0
-                for term in search_terms:
-                    if term in full_text:
-                        query_matches += 1
-                if query_matches >= 2:  # Если есть хотя бы 2 совпадения
-                    boost = famous['boost']
-                    logger.info(f"Бонус для {game['name']}: +{boost}")
-
+            # Релевантность
+            relevance = 0
+            
+            # Прямые совпадения с ключевыми словами запроса (самый большой вес)
+            for word in query_words:
+                if len(word) > 2:
+                    if word in name:
+                        relevance += 100
+                    if word in genres:
+                        relevance += 80
+                    if word in description:
+                        relevance += 50
+            
+            # Совпадения с переводом
             for term in search_terms:
-
-                weight = self.word_weights.get(
-                    term,
-                    3.0
-                )
-
-                if term in name:
-                    score += weight * 20  # Увеличил вес названия
-                    matched_terms += 1
-
-                elif term in genres:
-                    score += weight * 12  # Увеличил вес жанров
-                    matched_terms += 1
-
-                if term in description:
-                    score += weight * 12  # Увеличил вес описания
-                    matched_terms += 1
-
-            # Добавляем бонус за известные игры
-            score += boost
+                weight = self.word_weights.get(term, 3.0)
+                if term not in query_words:  # не дублируем уже проверенные слова
+                    if term in name:
+                        relevance += weight * 25
+                    if term in genres:
+                        relevance += weight * 15
+                    if term in description:
+                        relevance += weight * 8
             
-            if matched_terms == 0:
+            # Если нет ни одного совпадения - пропускаем
+            if relevance == 0:
                 continue
+            
+            # Небольшой бонус за популярность (максимум +50)
+            recommendations_count = game.get("recommendations", 0)
+            popularity_bonus = min(50, recommendations_count // 20000)
+            
+            final_score = relevance + popularity_bonus
+            scored.append((game, final_score, relevance))
 
-            # покрытие запроса
-            coverage = (
-                matched_terms /
-                max(len(search_terms), 1)
-            )
+        scored.sort(key=lambda x: x[1], reverse=True)
 
-            score *= coverage
+        # Логируем топ-20
+        logger.info("=== ТОП-20 КАНДИДАТОВ ===")
+        for i, (game, final_score, relevance) in enumerate(scored[:20]):
+            logger.info(f"  {i+1}. {game['name']} (score: {final_score:.0f}, relevance: {relevance:.0f})")
 
-            # бонус популярности
-            score += (
-                game.get("popularity", 50)
-                * 0.15
-            )
-
-            scored.append(
-                (game, score)
-            )
-
-        scored.sort(
-            key=lambda x: x[1],
-            reverse=True
-        )
-
-        # Нормализуем score для отображения
-        max_score = max([s for _, s in scored[:n_results]]) if scored else 1
+        max_score = max([s for _, s, _ in scored[:n_results]]) if scored else 1
 
         results = []
-
-        for game, score in scored[:n_results]:
-
-            normalized_score = min(score / max_score, 1.0)
-
+        for game, final_score, _ in scored[:n_results]:
+            normalized_score = min(final_score / max_score, 1.0)
             results.append({
                 "game_id": game["game_id"],
                 "name": game["name"],
                 "genres": game["genres"][:10],
-                "description": (
-                    game.get("description", "")[:200]
-                ),
-                "image_url":
-                    f"https://steamcdn-a.akamaihd.net/steam/apps/{game['game_id']}/header.jpg",
+                "description": game.get("description", "")[:200],
+                "image_url": f"https://steamcdn-a.akamaihd.net/steam/apps/{game['game_id']}/header.jpg",
                 "price": game.get("price", 0),
                 "relevance_score": normalized_score,
-                "popularity": game.get(
-                    "popularity",
-                    50
-                ),
-                "recommendation_type":
-                    "text_search"
+                "popularity": game.get("popularity", 50),
+                "recommendations": game.get("recommendations", 0),
+                "recommendation_type": "text_search"
             })
 
-        logger.info(
-            f"Найдено {len(results)} игр"
-        )
-        
-        # Логируем топ-5 результатов
-        for i, r in enumerate(results[:5]):
-            logger.info(f"  {i+1}. {r['name']} (score: {r['relevance_score']:.2f})")
-
+        logger.info(f"Найдено {len(results)} игр")
         return results
