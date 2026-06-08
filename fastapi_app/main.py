@@ -64,7 +64,16 @@ class HealthResponse(BaseModel):
 
 class TextSearchRequest(BaseModel):
     query: str = Field(..., description="Поисковый запрос")
-    n_results: int = Field(20, ge=1, le=50)
+    n_results: int = Field(30, ge=1, le=200, description="Количество результатов на страницу")
+    page: int = Field(1, ge=1, description="Номер страницы")
+
+class PredictRequest(BaseModel):
+    query: str = Field(..., description="Поисковый запрос")
+    n_results: int = Field(10, ge=1, le=50)
+
+class GamesByIdsRequest(BaseModel):
+    ids: List[int] = Field(..., description="Список ID игр")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -117,34 +126,12 @@ app = FastAPI(
     description="API для рекомендации игр",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1}
 )
 
-@app.post("/search-by-text", response_model=RecommendResponse)
-async def search_by_text(request: TextSearchRequest) -> RecommendResponse:
-    """Поиск игр по текстовому описанию"""
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Модель не загружена")
-    
-    logger.info(f"Текстовый поиск: {request.query}")
-    
-    results = recommender.search_by_text(request.query, request.n_results)
-    
-    games = [
-        GameInfo(
-            game_id=result['game_id'],
-            name=result['name'],
-            genres=result.get('genres', []),
-            score=result.get('relevance_score', 0),
-            recommendation_type=result.get('recommendation_type', 'text_search')
-        )
-        for result in results
-    ]
-    
-    return RecommendResponse(
-        recommendations=games,
-        total=len(games),
-        method_used="text_search"
-    )
 
 # Добавляем CORS для возможности запросов из Flask
 app.add_middleware(
@@ -241,7 +228,6 @@ async def recommend_by_genres(request: GenreRecommendRequest) -> RecommendRespon
     logger.info(f"Поиск игр по жанрам: {request.genres}")
     
     if not request.genres:
-        # Если жанры не выбраны, возвращаем популярные игры
         recommendations = recommender.recommend_for_user(0, request.n_recommendations)
     else:
         recommendations = recommender.recommend_by_genres(
@@ -267,6 +253,60 @@ async def recommend_by_genres(request: GenreRecommendRequest) -> RecommendRespon
     )
 
 
+@app.post("/search-by-text", response_model=RecommendResponse)
+async def search_by_text(request: TextSearchRequest) -> RecommendResponse:
+    """Поиск игр по текстовому описанию с пагинацией"""
+    if recommender is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+    
+    logger.info(f"Текстовый поиск: {request.query}, страница: {request.page}, на страницу: {request.n_results}")
+    
+    # Получаем все результаты (до 500 игр)
+    all_results = recommender.search_by_text(request.query, n_results=500)
+    
+    # Пагинация
+    page = request.page
+    per_page = request.n_results
+    start = (page - 1) * per_page
+    end = start + per_page
+    
+    paginated_results = all_results[start:end]
+    
+    games = [
+        GameInfo(
+            game_id=result['game_id'],
+            name=result['name'],
+            genres=result.get('genres', []),
+            score=result.get('relevance_score', 0),
+            recommendation_type=result.get('recommendation_type', 'text_search')
+        )
+        for result in paginated_results
+    ]
+    
+    logger.info(f"Найдено всего: {len(all_results)}, показано: {len(games)}")
+    
+    return RecommendResponse(
+        recommendations=games,
+        total=len(all_results),
+        method_used="text_search"
+    )
+
+
+@app.post("/predict")
+async def predict(request: PredictRequest):
+    """Предсказание на основе текстового запроса"""
+    if recommender is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+    
+    results = recommender.search_by_text(request.query, request.n_results)
+    
+    return {
+        "prediction": results[0] if results else None,
+        "recommendations": results,
+        "total": len(results)
+    }
+
+
 @app.get("/games/search")
 async def search_games(q: str, limit: int = 20):
     """Поиск игр по названию"""
@@ -283,5 +323,35 @@ async def search_games(q: str, limit: int = 20):
             })
             if len(results) >= limit:
                 break
+    
+    return results
+
+
+@app.post("/games/by-ids")
+async def get_games_by_ids(request: GamesByIdsRequest):
+    """Получение игр по списку ID"""
+    if recommender is None:
+        return []
+    
+    game_ids = request.ids
+    results = []
+    
+    # Создаём словарь для быстрого поиска
+    games_dict = {game['game_id']: game for game in recommender.games_data}
+    
+    for game_id in game_ids:
+        if game_id in games_dict:
+            game = games_dict[game_id]
+            results.append({
+                "game_id": game['game_id'],
+                "name": game['name'],
+                "genres": game['genres']
+            })
+        else:
+            results.append({
+                "game_id": game_id,
+                "name": f"Game_{game_id}",
+                "genres": []
+            })
     
     return results

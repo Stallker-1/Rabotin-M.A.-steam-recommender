@@ -24,7 +24,7 @@
                                                 {{ rec.created_at.strftime('%d.%m.%Y %H:%M:%S') if rec.created_at else 'Дата неизвестна' }}
                                             </span>
                                             <span class="badge bg-primary ms-2">
-                                                <i class="fas fa-list me-1"></i>Рекомендации
+                                                <i class="fas fa-list me-1"></i>{{ rec.games|length }} игр
                                             </span>
                                         </div>
                                     </button>
@@ -32,22 +32,27 @@
                                 <div id="collapse{{ rec.id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" data-bs-parent="#historyAccordion">
                                     <div class="accordion-body">
                                         <div class="row">
-                                            {% for game_id in rec.game_ids[:5] %}
-                                                <div class="col-md-2 col-sm-4 col-6 mb-2">
-                                                    <div class="card bg-light">
-                                                        <div class="card-body text-center p-2">
-                                                            <i class="fas fa-gamepad fa-2x text-primary"></i>
-                                                            <p class="small mt-1 mb-0">ID: {{ game_id }}</p>
+                                            {% for game in rec.games[:6] %}
+                                                <div class="col-md-4 col-sm-6 mb-2">
+                                                    <div class="card bg-light h-100">
+                                                        <div class="card-body p-2">
+                                                            <div class="d-flex align-items-center">
+                                                                <i class="fas fa-gamepad fa-2x text-primary me-2"></i>
+                                                                <div class="small">
+                                                                    <strong>{{ game.name[:45] }}</strong>
+                                                                    {% if game.name|length > 45 %}...{% endif %}
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             {% endfor %}
-                                            {% if rec.game_ids|length > 5 %}
-                                                <div class="col-md-2 col-sm-4 col-6 mb-2">
-                                                    <div class="card bg-secondary text-white">
+                                            {% if rec.games|length > 6 %}
+                                                <div class="col-md-4 col-sm-6 mb-2">
+                                                    <div class="card bg-secondary text-white h-100">
                                                         <div class="card-body text-center p-2">
                                                             <i class="fas fa-ellipsis-h fa-2x"></i>
-                                                            <p class="small mt-1 mb-0">+{{ rec.game_ids|length - 5 }} игр</p>
+                                                            <p class="small mt-1 mb-0">+{{ rec.games|length - 6 }} игр</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -70,18 +75,6 @@
                 {% endif %}
             </div>
         </div>
-        
-        {% if history %}
-            <div class="card mt-3">
-                <div class="card-body">
-                    <div class="alert alert-success mb-0">
-                        <i class="fas fa-chart-line me-2"></i>
-                        <strong>Статистика:</strong> Всего сессий рекомендаций: 
-                        <span class="badge bg-success fs-6">{{ history|length }}</span>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
